@@ -324,9 +324,8 @@ body{display:flex;flex-direction:column;max-width:430px;margin:0 auto}
 <script>
 var DAYS_S=["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
 var DAYS_F=["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
-var MUSCLE_LABEL=["CHEST","SHOULDERS","BACK","LEGS (OLD SPLIT)","ARMS","PUSH A","PULL A","LEGS (PPL)","PUSH B","PULL B"];
-var LEGACY_MUSCLE_LABEL=MUSCLE_LABEL;
-var DAY_CLR=["#ff375f","#ff9f0a","#30d158","#0a84ff","#bf5af2","#ff375f","#ff9f0a","#30d158","#0a84ff","#bf5af2"];
+var MUSCLE_LABEL=["CHEST","SHOULDERS","BACK","LEGS","ARMS","-","-"];
+var DAY_CLR=["#ff375f","#ff9f0a","#30d158","#0a84ff","#bf5af2","#64d2ff","#5e5ce6"];
 var WEEKEND=[5,6];
 var ACT_TYPES=[
   {ico:'<svg width="48" height="48" viewBox="0 0 48 48" fill="none"><text x="24" y="28" font-size="13" font-weight="700" fill="#c8f135" text-anchor="middle" font-family="-apple-system,sans-serif" letter-spacing="1">CYCLE</text><text x="24" y="39" font-size="7" font-weight="500" fill="#c8f135" text-anchor="middle" font-family="-apple-system,sans-serif" letter-spacing="3" opacity=".3">DAY</text></svg>',label:"Cycling"},
@@ -345,42 +344,7 @@ var MUSCLE_SVG={
   cycling:'<svg width="54" height="54" viewBox="0 0 54 54" fill="none"><text x="27" y="32" font-size="15" font-weight="700" fill="#c8f135" text-anchor="middle" font-family="-apple-system,sans-serif" letter-spacing="1">REST</text><text x="27" y="44" font-size="8" font-weight="500" fill="#c8f135" text-anchor="middle" font-family="-apple-system,sans-serif" letter-spacing="3" opacity=".3">DAY</text></svg>',
   walking:'<svg width="54" height="54" viewBox="0 0 54 54" fill="none"><text x="27" y="32" font-size="15" font-weight="700" fill="#c8f135" text-anchor="middle" font-family="-apple-system,sans-serif" letter-spacing="1">REST</text><text x="27" y="44" font-size="8" font-weight="500" fill="#c8f135" text-anchor="middle" font-family="-apple-system,sans-serif" letter-spacing="3" opacity=".3">DAY</text></svg>'
 };
-var DAY_ICO=["chest","shoulders","back","legs","arms","chest","back","legs","chest","back"];
-var PPL_START_DATE="2026-11-18";
-var PPL_EXERCISES=[
- ["Împins înclinat cu gantere","Fluturări la pec deck","Împins deasupra capului cu gantere","Ridicări laterale","Extensii triceps la scripete cu frânghie","Extensii triceps deasupra capului cu frânghie"],
- ["Tracțiuni asistate la aparat","Ramat cu priză largă cu bara","Ramat cu priză îngustă","Flexii biceps la bancă Scott","Flexii ciocan"],
- ["Extensii pentru cvadricepși","Presă pentru picioare","Flexii biceps femural culcat"],
- ["Împins înclinat cu gantere","Fluturări la pec deck","Împins deasupra capului cu gantere","Ridicări laterale","Extensii triceps la scripete cu frânghie","Extensii triceps deasupra capului cu frânghie"],
- ["Tracțiuni asistate la aparat","Ramat cu priză largă cu bara","Ramat cu priză îngustă","Flexii biceps la bancă Scott","Flexii ciocan"]
-];
-var PPL_SET_COUNTS=[[4,4,3,4,3,3],[3,3,3,3,3],[4,4,4],[4,4,3,4,3,3],[3,3,3,3,3]];
-function getExerciseSetCount(workoutType,exerciseIndex){
- if(workoutType<5)return 4;
- return (PPL_SET_COUNTS[workoutType-5]||[])[exerciseIndex]||4;
-}
-function setupPPLPlan(){
- var store=gs();
- // Undo the earlier overwrite: keep every legacy plan version, remove only the
- // accidental PPL versions from legacy slots 0-4.
- for(var i=0;i<5;i++){
-   var raw=(store.plans||{})[i];
-   if(raw&&raw.length&&typeof raw[0]!=="string"){
-     store.plans[i]=raw.filter(function(v){
-       // Remove only the exact PPL plan version that the earlier update inserted.
-       // Keep any legacy/custom plan versions saved on or after this date.
-       return !(v.from===PPL_START_DATE && JSON.stringify(v.names||[])===JSON.stringify(PPL_EXERCISES[i]));
-     });
-   }
- }
- if(!store.plans)store.plans={};
- for(var j=0;j<5;j++){
-   var pidx=j+5,pr=store.plans[pidx];
-   if(!pr||!pr.length)savePlanVersion(store,pidx,PPL_EXERCISES[j],PPL_START_DATE);
- }
- store.pplSetupVersion="pplpp-additive-2026-11-18";
- ss(store);
-}
+var DAY_ICO=["chest","shoulders","back","legs","arms","cycling","walking"];
 
 function gs(){try{return JSON.parse(localStorage.getItem("wt4")||"{}")}catch(e){return{}}}
 function ss(d){localStorage.setItem("wt4",JSON.stringify(d))}
@@ -394,18 +358,19 @@ function iso(d){
 // getPlan: returns the exercise name array valid for a given date
 // supports both old format (array) and new versioned format (array of {from,names})
 function getLastWeekData(store,workoutType,currentDateStr){
-  // Compare like with like: legacy workouts (0-4) remain separate from PPL (5-9).
+  // Find the most recent PAST date (strictly before today) with a matching workout type.
+  // Matching is by workout type (Chest/Shoulders/Back/Legs/Arms), not by calendar weekday -
+  // so if today's workout was reassigned (e.g. Arms on a Thursday), this finds the
+  // last time Arms was actually done, regardless of which day that was.
   var bestKey=null,bestDate="";
   Object.keys(store).forEach(function(k){
     if(!/^\d{4}-\d{2}-\d{2}_d\d$/.test(k))return;
     var datepart=k.slice(0,10);
     if(datepart>=currentDateStr)return;
-    if(workoutType>=5 && datepart<PPL_START_DATE)return;
-    if(workoutType<5 && datepart>=PPL_START_DATE)return;
     if(!hasLoggedSets(store[k]))return;
     var kDow=parseInt(k.slice(-1));
     if(kDow>=5)return;
-    var kType=(typeof store[k].workoutType==="number")?store[k].workoutType:(datepart>=PPL_START_DATE?kDow+5:kDow);
+    var kType=(typeof store[k].workoutType==="number")?store[k].workoutType:kDow;
     if(kType!==workoutType)return;
     if(datepart>bestDate){bestDate=datepart;bestKey=k;}
   });
@@ -417,7 +382,7 @@ function getLastWeekData(store,workoutType,currentDateStr){
 // Returns sets keyed by exercise NAME instead of index
 // currentPlan: array of exercise names for today
 // lastData: {sets, plan, date} from getLastWeekData
-function getLastSetsByName(currentPlan,lastData,workoutType){
+function getLastSetsByName(currentPlan,lastData){
   var result={};
   var lastSets=lastData.sets||{};
   var lastPlan=lastData.plan||[];
@@ -432,7 +397,7 @@ function getLastSetsByName(currentPlan,lastData,workoutType){
     if(lastEi<0)return; // exercise not found in last week
     // Copy sets from lastEi → curEi slot
     result[curEi]={};
-    for(var s=0;s<getExerciseSetCount(workoutType,lastEi);s++){
+    for(var s=0;s<4;s++){
       var lk=lastEi+"_"+s;
       if(lastSets[lk])result[curEi][s]=lastSets[lk];
     }
@@ -443,20 +408,21 @@ function getLastSetsByName(currentPlan,lastData,workoutType){
 function getPlan(store,dayIdx,dateStr){
   var raw=(store.plans||{})[dayIdx];
   if(!raw||raw.length===0)return[];
+  // old format: array of strings
   if(typeof raw[0]==="string")return raw;
+  // new format: array of {from, names}, sorted newest first
   var sorted=raw.slice().sort(function(a,b){return b.from>a.from?1:-1});
   for(var i=0;i<sorted.length;i++){
     if(sorted[i].from<=dateStr)return sorted[i].names||[];
   }
-  // For dates before the first version, use the oldest plan, never the newest.
   return sorted[sorted.length-1].names||[];
 }
 
 // savePlanVersion: saves a new version of the plan starting from today
-function savePlanVersion(store,dayIdx,names,fromDate){
+function savePlanVersion(store,dayIdx,names){
   if(!store.plans)store.plans={};
   var raw=store.plans[dayIdx];
-  var today=fromDate||iso(new Date());
+  var today=iso(new Date());
   // convert old format
   if(!raw){raw=[];}
   if(raw.length>0&&typeof raw[0]==="string"){
@@ -507,7 +473,7 @@ function getWorkoutType(store,date){
   if(dow>=5)return dow;
   var dk=dayKey(date);
   if(store[dk]&&typeof store[dk].workoutType==="number")return store[dk].workoutType;
-  return iso(date)>=PPL_START_DATE?dow+5:dow;
+  return dow;
 }
 
 // Called from the workout-type dropdown - overrides the workout for THIS date only
@@ -515,7 +481,7 @@ function changeWorkoutType(sel){
   var newType=parseInt(sel.value);
   var store=gs();
   var dk=dayKey(curDate);
-  var defaultType=iso(curDate)>=PPL_START_DATE?dowOf(curDate)+5:dowOf(curDate);
+  var defaultType=dowOf(curDate);
   if(!store[dk])store[dk]={};
   if(newType===defaultType){
     delete store[dk].workoutType;
@@ -588,16 +554,16 @@ function renderWeekday(container,dayData,idx,store,dk,actualDow){
   var plan=getPlan(store,idx,iso(curDate));
   var sets=dayData.sets||{};
   var prs=checkPRs(idx,dk,sets,plan,store);
-  var done=0,total=plan.reduce(function(sum,_,ei){return sum+getExerciseSetCount(idx,ei)},0);
-  plan.forEach(function(_,ei){for(var s=0;s<getExerciseSetCount(idx,ei);s++){if(sets[ei+"_"+s]&&sets[ei+"_"+s].reps>0)done++}});
+  var done=0,total=plan.length*4;
+  plan.forEach(function(_,ei){for(var s=0;s<4;s++){if(sets[ei+"_"+s]&&sets[ei+"_"+s].reps>0)done++}});
   var pct=total?Math.round(done/total*100):0;
   var clr=DAY_CLR[idx];
   var html='<div class="day-hero"><div class="day-icon-wrap" style="background:rgba(200,241,53,.08);border:.5px solid rgba(200,241,53,.2)">'+MUSCLE_SVG[DAY_ICO[idx]]+'</div>';
   html+='<div><div class="day-name">'+DAYS_F[actualDow]+'</div>';
   html+='<div style="display:flex;align-items:center;gap:4px;margin-top:2px">';
   html+='<select class="day-type-select" style="color:#c8f135" onchange="changeWorkoutType(this)">';
-  for(var mi=0;mi<10;mi++){
-    html+='<option value="'+mi+'"'+(mi===idx?' selected':'')+'>'+MUSCLE_LABEL[mi]+'</option>';
+  for(var mi=0;mi<5;mi++){
+    html+='<option value="'+mi+'"'+(mi===idx?' selected':'')+'>'+MUSCLE_LABEL[mi]+' WORKOUT</option>';
   }
   html+='</select>';
   html+='<span style="color:#c8f135;font-size:9px;pointer-events:none;opacity:.7">&#9662;</span>';
@@ -605,32 +571,34 @@ function renderWeekday(container,dayData,idx,store,dk,actualDow){
   if(prs.length)html+='<div class="pr-banner"><div style="font-size:20px;flex-shrink:0">&#127942;</div><div class="pr-text">'+prs.join("<br>")+'</div></div>';
   if(total)html+='<div class="prog-wrap"><div class="prog-bar" style="width:'+pct+'%"></div></div>';
   var lastData=getLastWeekData(store,idx,iso(curDate));
-  var lastByName=getLastSetsByName(plan,lastData,idx);
+  var lastByName=getLastSetsByName(plan,lastData);
   if(!plan.length){
     html+='<div class="empty-state"><div style="margin-bottom:10px">'+MUSCLE_SVG[DAY_ICO[idx]]+'</div>No exercises planned.<br>Tap the edit button below.</div>';
+  } else if(idx===4){
+    html+=renderFriday(plan,sets,idx,lastByName);
   } else {
-    plan.forEach(function(name,ei){html+=renderExCard(name,ei,sets,idx,false,lastByName,getExerciseSetCount(idx,ei))});
+    plan.forEach(function(name,ei){html+=renderExCard(name,ei,sets,idx,false,lastByName)});
   }
   container.innerHTML=html;
   document.getElementById("btnPlan").style.display="flex";
   document.getElementById("btnSave").textContent="Save day";
 }
 
-function renderExCard(name,ei,sets,idx,compact,lastSets,setCount){
+function renderExCard(name,ei,sets,idx,compact,lastSets){
   var rowCls=compact?"ss-set-row":"set-row";
   var numCls=compact?"ss-set-num":"set-num";
   var headCls=compact?"ss-sets-head":"sets-head";
   var inpCls=compact?"ss-inp":"set-inp";
   var ls=lastSets||{};
   var rows="";
-  for(var s=0;s<(setCount||4);s++){
+  for(var s=0;s<4;s++){
     var k=ei+"_"+s,sv=sets[k]||{};
     var lsv=(ls[ei]&&ls[ei][s])||{};
     var hasLast=lsv.reps>0||lsv.kg>0;
     var isDone=sv.reps>0&&sv.kg>0;
     var rC=isDone?"done":(sv.reps>0?"filled":"");
     var kC=isDone?"done":(sv.kg>0?"filled":"");
-    var aC=(typeof sv.rir==="number")?"filled":"";
+    var aC=sv.asst>0?"filled":"";
     // last week reps for the num cell
     var lastRepsTxt=hasLast&&lsv.reps>0?lsv.reps:"–";
     var lastNumStyle=hasLast?"color:rgba(200,241,53,.55);font-size:"+(compact?"10":"12")+"px;font-weight:700;line-height:1":"color:rgba(235,235,245,.2);font-size:"+(compact?"10":"12")+"px";
@@ -639,14 +607,14 @@ function renderExCard(name,ei,sets,idx,compact,lastSets,setCount){
     rows+='<div class="'+numCls+'" style="flex-direction:column;gap:0;display:flex;align-items:center;justify-content:center">'+numContent+'</div>';
     rows+='<input class="'+inpCls+' '+rC+'" type="number" inputmode="decimal" placeholder="-" value="'+( sv.reps>0?sv.reps:"")+'" data-ei="'+ei+'" data-s="'+s+'" data-t="r" data-day="'+idx+'" onchange="saveInp(this)" onfocus="this.select()">';
     rows+='<input class="'+inpCls+' '+kC+'" type="number" inputmode="decimal" placeholder="-" value="'+( sv.kg>0?sv.kg:"")+'" data-ei="'+ei+'" data-s="'+s+'" data-t="k" data-day="'+idx+'" onchange="saveInp(this)" onfocus="this.select()">';
-    rows+='<input class="'+inpCls+' '+aC+'" type="number" inputmode="numeric" min="0" max="5" step="1" placeholder="-" value="'+(typeof sv.rir==="number"?sv.rir:"")+'" data-ei="'+ei+'" data-s="'+s+'" data-t="i" data-day="'+idx+'" onchange="saveInp(this)" onfocus="this.select()">';
+    rows+='<input class="'+inpCls+' '+aC+'" type="number" inputmode="decimal" placeholder="-" value="'+( sv.asst>0?sv.asst:"")+'" data-ei="'+ei+'" data-s="'+s+'" data-t="a" data-day="'+idx+'" onchange="saveInp(this)" onfocus="this.select()">';
     rows+='</div>';
     // hint row under each set
     if(hasLast){
       var hintParts=[];
       if(lsv.reps>0)hintParts.push(lsv.reps+"r");
       if(lsv.kg>0)hintParts.push(lsv.kg+"kg");
-      if(typeof lsv.rir==="number")hintParts.push("RIR "+lsv.rir);
+      if(lsv.asst>0)hintParts.push("+"+lsv.asst+"h");
       var hintFontSize=compact?"9":"10";
       var numW=compact?"22px":"26px";
       rows+='<div style="padding-left:calc('+numW+' + 4px);font-size:'+hintFontSize+'px;color:rgba(200,241,53,.3);padding-bottom:4px;margin-top:-2px;font-weight:500">last: '+hintParts.join(" · ")+'</div>';
@@ -657,7 +625,7 @@ function renderExCard(name,ei,sets,idx,compact,lastSets,setCount){
   html+='<span class="ex-name-disp" id="exd_'+idx+'_'+ei+'">'+nd+'</span>';
   html+='<input class="ex-name-inp" id="exe_'+idx+'_'+ei+'" value="'+nd+'" placeholder="Exercise name" onblur="saveExName('+idx+','+ei+')" onkeydown="nameKey(event,'+idx+','+ei+')">';
   html+='</div><button class="btn-edit" onclick="toggleName('+idx+','+ei+')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M11 4H6a2 2 0 00-2 2v12a2 2 0 002 2h12a2 2 0 002-2v-5" stroke="rgba(235,235,245,.5)" stroke-width="1.8" stroke-linecap="round"/><path d="M17 3l4 4-8 8H9v-4l8-8z" stroke="rgba(235,235,245,.5)" stroke-width="1.8" stroke-linejoin="round"/></svg></button></div>';
-  html+='<div class="card-body"><div class="'+headCls+'"><span style="font-size:9px;color:rgba(200,241,53,.4)">prev</span><span>Repetări</span><span>Kg</span><span>RIR</span></div>'+rows+'</div></div>';
+  html+='<div class="card-body"><div class="'+headCls+'"><span style="font-size:9px;color:rgba(200,241,53,.4)">prev</span><span>Reps</span><span>Kg</span><span>+Help</span></div>'+rows+'</div></div>';
   return html;
 }
 
@@ -678,21 +646,21 @@ function nameKey(event,di,ei){
 
 function saveInp(input){
   var ei=input.dataset.ei,s=input.dataset.s,t=input.dataset.t,dayI=parseInt(input.dataset.day);
-  var val=input.value.trim()===""?null:parseFloat(input.value); if(val!==null&&!isFinite(val))val=null;
+  var val=parseFloat(input.value)||0;
   var store=gs(),dk=dayKey(curDate);
   if(!store[dk])store[dk]={};
   if(!store[dk].sets)store[dk].sets={};
   var k=ei+"_"+s;
   if(!store[dk].sets[k])store[dk].sets[k]={};
-  if(t==="r"){if(val===null)delete store[dk].sets[k].reps;else store[dk].sets[k].reps=val;}
-  else if(t==="k"){if(val===null)delete store[dk].sets[k].kg;else store[dk].sets[k].kg=val;}
-  else {if(val===null)delete store[dk].sets[k].rir;else store[dk].sets[k].rir=Math.max(0,Math.min(5,Math.round(val)));}
+  if(t==="r")store[dk].sets[k].reps=val;
+  else if(t==="k")store[dk].sets[k].kg=val;
+  else store[dk].sets[k].asst=val;
   ss(store);
   var sv=store[dk].sets[k];
   var isDone=sv.reps>0&&sv.kg>0;
-  input.classList.toggle("filled",val!==null&&val!==0&&!isDone);
+  input.classList.toggle("filled",val>0&&!isDone);
   input.classList.toggle("done",isDone&&(t==="r"||t==="k"));
-  ["r","k","i"].forEach(function(type){
+  ["r","k","a"].forEach(function(type){
     var sib=document.querySelector('input[data-ei="'+ei+'"][data-s="'+s+'"][data-t="'+type+'"][data-day="'+dayI+'"]');
     if(!sib)return;
     var sv2=parseFloat(sib.value)||0;
@@ -705,8 +673,8 @@ function updateProg(){
   var store=gs(),dk=dayKey(curDate);
   var workoutType=getWorkoutType(store,curDate);
   var plan=getPlan(store,workoutType,iso(curDate)),sets=(store[dk]||{}).sets||{};
-  var done=0,total=plan.reduce(function(sum,_,ei){return sum+getExerciseSetCount(workoutType,ei)},0);
-  plan.forEach(function(_,ei){for(var s=0;s<getExerciseSetCount(workoutType,ei);s++){if(sets[ei+"_"+s]&&sets[ei+"_"+s].reps>0)done++}});
+  var done=0,total=plan.length*4;
+  plan.forEach(function(_,ei){for(var s=0;s<4;s++){if(sets[ei+"_"+s]&&sets[ei+"_"+s].reps>0)done++}});
   var bar=document.querySelector(".prog-bar");
   if(bar)bar.style.width=(total?Math.round(done/total*100):0)+"%";
 }
@@ -717,20 +685,18 @@ function checkPRs(workoutType,curDk,curSets,plan,store){
     if(k===curDk)return false;
     if(!/^\d{4}-\d{2}-\d{2}_d\d$/.test(k))return false;
     if(!hasLoggedSets(store[k]))return false;
-    var kDow=parseInt(k.slice(-1)),datepart=k.slice(0,10);
+    var kDow=parseInt(k.slice(-1));
     if(kDow>=5)return false;
-    if(workoutType>=5 && datepart<PPL_START_DATE)return false;
-    if(workoutType<5 && datepart>=PPL_START_DATE)return false;
-    var kType=(typeof store[k].workoutType==="number")?store[k].workoutType:(datepart>=PPL_START_DATE?kDow+5:kDow);
+    var kType=(typeof store[k].workoutType==="number")?store[k].workoutType:kDow;
     return kType===workoutType;
   });
   plan.forEach(function(name,ei){
     var bestReps=0,bestKg=0;
     pastKeys.forEach(function(pk){
-      for(var s=0;s<getExerciseSetCount(workoutType,ei);s++){var ps=(store[pk].sets||{})[ei+"_"+s]||{};if((ps.reps||0)>bestReps)bestReps=ps.reps||0;if((ps.kg||0)>bestKg)bestKg=ps.kg||0}
+      for(var s=0;s<4;s++){var ps=(store[pk].sets||{})[ei+"_"+s]||{};if((ps.reps||0)>bestReps)bestReps=ps.reps||0;if((ps.kg||0)>bestKg)bestKg=ps.kg||0}
     });
     var repsT=0,kgT=0;
-    for(var s=0;s<getExerciseSetCount(workoutType,ei);s++){var cs=curSets[ei+"_"+s]||{};if((cs.reps||0)>repsT)repsT=cs.reps||0;if((cs.kg||0)>kgT)kgT=cs.kg||0}
+    for(var s=0;s<4;s++){var cs=curSets[ei+"_"+s]||{};if((cs.reps||0)>repsT)repsT=cs.reps||0;if((cs.kg||0)>kgT)kgT=cs.kg||0}
     if(bestReps>0&&repsT>bestReps)msgs.push("New rep PR - "+(name||"Ex "+(ei+1))+": "+repsT+" reps!");
     if(bestKg>0&&kgT>bestKg)msgs.push("New weight PR - "+(name||"Ex "+(ei+1))+": "+kgT+"kg!");
   });
@@ -1348,7 +1314,6 @@ function showToast(msg){
       4:[{from:"2000-01-01",names:["Barbell Curl","Hammer Curl","Skull Crushers","Tricep Pushdown","Cable Curl","Close-Grip Bench"]}]
     };ss(store);
   }
-  setupPPLPlan();
   buildStrip();renderDay();
 })();
 </script>
