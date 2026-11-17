@@ -366,7 +366,11 @@ function setupPPLPlan(){
  for(var i=0;i<5;i++){
    var raw=(store.plans||{})[i];
    if(raw&&raw.length&&typeof raw[0]!=="string"){
-     store.plans[i]=raw.filter(function(v){return v.from<PPL_START_DATE;});
+     store.plans[i]=raw.filter(function(v){
+       // Remove only the exact PPL plan version that the earlier update inserted.
+       // Keep any legacy/custom plan versions saved on or after this date.
+       return !(v.from===PPL_START_DATE && JSON.stringify(v.names||[])===JSON.stringify(PPL_EXERCISES[i]));
+     });
    }
  }
  if(!store.plans)store.plans={};
