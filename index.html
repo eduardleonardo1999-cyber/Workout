@@ -661,7 +661,7 @@ function updateProg(){
 }
 
 function checkPRs(workoutType,curDk,curSets,plan,store){
-  var msgs=[];
+  var msgs=[],currentCounts=getPlanSetCounts(store,workoutType,curDk.slice(0,10));
   var pastKeys=Object.keys(store).filter(function(k){
     if(k===curDk)return false;
     if(!/^\d{4}-\d{2}-\d{2}_d\d$/.test(k))return false;
@@ -674,10 +674,11 @@ function checkPRs(workoutType,curDk,curSets,plan,store){
   plan.forEach(function(name,ei){
     var bestReps=0,bestKg=0;
     pastKeys.forEach(function(pk){
-      for(var s=0;s<4;s++){var ps=(store[pk].sets||{})[ei+"_"+s]||{};if((ps.reps||0)>bestReps)bestReps=ps.reps||0;if((ps.kg||0)>bestKg)bestKg=ps.kg||0}
+      var oldCounts=getPlanSetCounts(store,workoutType,pk.slice(0,10));
+      for(var s=0;s<(oldCounts[ei]||4);s++){var ps=(store[pk].sets||{})[ei+"_"+s]||{};if((ps.reps||0)>bestReps)bestReps=ps.reps||0;if((ps.kg||0)>bestKg)bestKg=ps.kg||0}
     });
     var repsT=0,kgT=0;
-    for(var s=0;s<4;s++){var cs=curSets[ei+"_"+s]||{};if((cs.reps||0)>repsT)repsT=cs.reps||0;if((cs.kg||0)>kgT)kgT=cs.kg||0}
+    for(var s=0;s<(currentCounts[ei]||4);s++){var cs=curSets[ei+"_"+s]||{};if((cs.reps||0)>repsT)repsT=cs.reps||0;if((cs.kg||0)>kgT)kgT=cs.kg||0}
     if(bestReps>0&&repsT>bestReps)msgs.push("New rep PR - "+(name||"Ex "+(ei+1))+": "+repsT+" reps!");
     if(bestKg>0&&kgT>bestKg)msgs.push("New weight PR - "+(name||"Ex "+(ei+1))+": "+kgT+"kg!");
   });
@@ -937,7 +938,7 @@ function addPlanRow(list,val,count){
   var row=document.createElement("div");row.className="plan-row";
   var wrap=document.createElement("div");wrap.style.cssText="display:flex;gap:8px;width:100%";
   var name=document.createElement("input");name.className="plan-inp";name.type="text";name.placeholder="Exercise name";name.value=val||"";name.style.cssText="flex:1;min-width:0";
-  var sets=document.createElement("input");sets.className="plan-count";sets.type="number";sets.min="1";sets.max="30";sets.step="1";sets.placeholder="Sets";sets.value=count||"";sets.style.cssText="width:68px;background:var(--bg3);color:var(--text);border:1px solid var(--border);border-radius:8px;text-align:center";
+  var sets=document.createElement("input");sets.className="plan-count";sets.type="number";sets.min="1";sets.step="1";sets.placeholder="Sets";sets.value=count||"";sets.style.cssText="width:68px;background:var(--bg3);color:var(--text);border:1px solid var(--border);border-radius:8px;text-align:center";
   wrap.appendChild(name);wrap.appendChild(sets);row.appendChild(wrap);
   var rm=document.createElement("button");rm.className="btn-rm";rm.textContent="x";rm.onclick=function(){row.remove()};row.appendChild(rm);
   list.appendChild(row);
@@ -951,7 +952,7 @@ document.getElementById("btnSavePlan").onclick=function(){
     var nm=rows[ri].querySelector(".plan-inp").value.trim();
     if(!nm)continue;
     var sc=parseInt(rows[ri].querySelector(".plan-count").value,10);
-    if(!sc||sc<1||sc>30){showToast("Set a valid number of sets (1-30)");return;}
+    if(!sc||sc<1){showToast("Enter at least 1 set for each exercise");return;}
     names.push(nm);counts.push(sc);
   }
   savePlanVersion(store,editingDay,names,counts);
