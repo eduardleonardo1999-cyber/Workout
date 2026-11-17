@@ -324,9 +324,9 @@ body{display:flex;flex-direction:column;max-width:430px;margin:0 auto}
 <script>
 var DAYS_S=["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
 var DAYS_F=["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
-var MUSCLE_LABEL=["PUSH A","PULL A","LEGS","PUSH B","PULL B","-","-"];
-var LEGACY_MUSCLE_LABEL=["CHEST","SHOULDERS","BACK","LEGS","ARMS","-","-"];
-var DAY_CLR=["#ff375f","#ff9f0a","#30d158","#0a84ff","#bf5af2","#64d2ff","#5e5ce6"];
+var MUSCLE_LABEL=["CHEST","SHOULDERS","BACK","LEGS (OLD SPLIT)","ARMS","PUSH A","PULL A","LEGS (PPL)","PUSH B","PULL B"];
+var LEGACY_MUSCLE_LABEL=MUSCLE_LABEL;
+var DAY_CLR=["#ff375f","#ff9f0a","#30d158","#0a84ff","#bf5af2","#ff375f","#ff9f0a","#30d158","#0a84ff","#bf5af2"];
 var WEEKEND=[5,6];
 var ACT_TYPES=[
   {ico:'<svg width="48" height="48" viewBox="0 0 48 48" fill="none"><text x="24" y="28" font-size="13" font-weight="700" fill="#c8f135" text-anchor="middle" font-family="-apple-system,sans-serif" letter-spacing="1">CYCLE</text><text x="24" y="39" font-size="7" font-weight="500" fill="#c8f135" text-anchor="middle" font-family="-apple-system,sans-serif" letter-spacing="3" opacity=".3">DAY</text></svg>',label:"Cycling"},
@@ -345,7 +345,7 @@ var MUSCLE_SVG={
   cycling:'<svg width="54" height="54" viewBox="0 0 54 54" fill="none"><text x="27" y="32" font-size="15" font-weight="700" fill="#c8f135" text-anchor="middle" font-family="-apple-system,sans-serif" letter-spacing="1">REST</text><text x="27" y="44" font-size="8" font-weight="500" fill="#c8f135" text-anchor="middle" font-family="-apple-system,sans-serif" letter-spacing="3" opacity=".3">DAY</text></svg>',
   walking:'<svg width="54" height="54" viewBox="0 0 54 54" fill="none"><text x="27" y="32" font-size="15" font-weight="700" fill="#c8f135" text-anchor="middle" font-family="-apple-system,sans-serif" letter-spacing="1">REST</text><text x="27" y="44" font-size="8" font-weight="500" fill="#c8f135" text-anchor="middle" font-family="-apple-system,sans-serif" letter-spacing="3" opacity=".3">DAY</text></svg>'
 };
-var DAY_ICO=["chest","shoulders","back","legs","arms","cycling","walking"];
+var DAY_ICO=["chest","shoulders","back","legs","arms","chest","back","legs","chest","back"];
 var PPL_START_DATE="2026-11-18";
 var PPL_EXERCISES=[
  ["Împins înclinat cu gantere","Fluturări la pec deck","Împins deasupra capului cu gantere","Ridicări laterale","Extensii triceps la scripete cu frânghie","Extensii triceps deasupra capului cu frânghie"],
@@ -355,12 +355,26 @@ var PPL_EXERCISES=[
  ["Tracțiuni asistate la aparat","Ramat cu priză largă cu bara","Ramat cu priză îngustă","Flexii biceps la bancă Scott","Flexii ciocan"]
 ];
 var PPL_SET_COUNTS=[[4,4,3,4,3,3],[3,3,3,3,3],[4,4,4],[4,4,3,4,3,3],[3,3,3,3,3]];
-function getExerciseSetCount(workoutType,exerciseIndex){return (PPL_SET_COUNTS[workoutType]||[])[exerciseIndex]||4;}
+function getExerciseSetCount(workoutType,exerciseIndex){
+ if(workoutType<5)return 4;
+ return (PPL_SET_COUNTS[workoutType-5]||[])[exerciseIndex]||4;
+}
 function setupPPLPlan(){
  var store=gs();
- if(store.pplSetupVersion==="pplpp-2026-11-18")return;
- for(var i=0;i<5;i++)savePlanVersion(store,i,PPL_EXERCISES[i],PPL_START_DATE);
- store.pplSetupVersion="pplpp-2026-11-18";
+ // Undo the earlier overwrite: keep every legacy plan version, remove only the
+ // accidental PPL versions from legacy slots 0-4.
+ for(var i=0;i<5;i++){
+   var raw=(store.plans||{})[i];
+   if(raw&&raw.length&&typeof raw[0]!=="string"){
+     store.plans[i]=raw.filter(function(v){return v.from<PPL_START_DATE;});
+   }
+ }
+ if(!store.plans)store.plans={};
+ for(var j=0;j<5;j++){
+   var pidx=j+5,pr=store.plans[pidx];
+   if(!pr||!pr.length)savePlanVersion(store,pidx,PPL_EXERCISES[j],PPL_START_DATE);
+ }
+ store.pplSetupVersion="pplpp-additive-2026-11-18";
  ss(store);
 }
 
@@ -376,19 +390,18 @@ function iso(d){
 // getPlan: returns the exercise name array valid for a given date
 // supports both old format (array) and new versioned format (array of {from,names})
 function getLastWeekData(store,workoutType,currentDateStr){
-  // Find the most recent PAST date (strictly before today) with a matching workout type.
-  // Matching is by workout type (Chest/Shoulders/Back/Legs/Arms), not by calendar weekday -
-  // so if today's workout was reassigned (e.g. Arms on a Thursday), this finds the
-  // last time Arms was actually done, regardless of which day that was.
+  // Compare like with like: legacy workouts (0-4) remain separate from PPL (5-9).
   var bestKey=null,bestDate="";
   Object.keys(store).forEach(function(k){
     if(!/^\d{4}-\d{2}-\d{2}_d\d$/.test(k))return;
     var datepart=k.slice(0,10);
-    if(datepart>=currentDateStr||datepart<PPL_START_DATE)return;
+    if(datepart>=currentDateStr)return;
+    if(workoutType>=5 && datepart<PPL_START_DATE)return;
+    if(workoutType<5 && datepart>=PPL_START_DATE)return;
     if(!hasLoggedSets(store[k]))return;
     var kDow=parseInt(k.slice(-1));
     if(kDow>=5)return;
-    var kType=(typeof store[k].workoutType==="number")?store[k].workoutType:kDow;
+    var kType=(typeof store[k].workoutType==="number")?store[k].workoutType:(datepart>=PPL_START_DATE?kDow+5:kDow);
     if(kType!==workoutType)return;
     if(datepart>bestDate){bestDate=datepart;bestKey=k;}
   });
@@ -426,13 +439,12 @@ function getLastSetsByName(currentPlan,lastData,workoutType){
 function getPlan(store,dayIdx,dateStr){
   var raw=(store.plans||{})[dayIdx];
   if(!raw||raw.length===0)return[];
-  // old format: array of strings
   if(typeof raw[0]==="string")return raw;
-  // new format: array of {from, names}, sorted newest first
   var sorted=raw.slice().sort(function(a,b){return b.from>a.from?1:-1});
   for(var i=0;i<sorted.length;i++){
     if(sorted[i].from<=dateStr)return sorted[i].names||[];
   }
+  // For dates before the first version, use the oldest plan, never the newest.
   return sorted[sorted.length-1].names||[];
 }
 
@@ -491,7 +503,7 @@ function getWorkoutType(store,date){
   if(dow>=5)return dow;
   var dk=dayKey(date);
   if(store[dk]&&typeof store[dk].workoutType==="number")return store[dk].workoutType;
-  return dow;
+  return iso(date)>=PPL_START_DATE?dow+5:dow;
 }
 
 // Called from the workout-type dropdown - overrides the workout for THIS date only
@@ -499,7 +511,7 @@ function changeWorkoutType(sel){
   var newType=parseInt(sel.value);
   var store=gs();
   var dk=dayKey(curDate);
-  var defaultType=dowOf(curDate);
+  var defaultType=iso(curDate)>=PPL_START_DATE?dowOf(curDate)+5:dowOf(curDate);
   if(!store[dk])store[dk]={};
   if(newType===defaultType){
     delete store[dk].workoutType;
@@ -580,8 +592,8 @@ function renderWeekday(container,dayData,idx,store,dk,actualDow){
   html+='<div><div class="day-name">'+DAYS_F[actualDow]+'</div>';
   html+='<div style="display:flex;align-items:center;gap:4px;margin-top:2px">';
   html+='<select class="day-type-select" style="color:#c8f135" onchange="changeWorkoutType(this)">';
-  for(var mi=0;mi<5;mi++){
-    html+='<option value="'+mi+'"'+(mi===idx?' selected':'')+'>'+((iso(curDate)<PPL_START_DATE)?LEGACY_MUSCLE_LABEL[mi]:MUSCLE_LABEL[mi])+'</option>';
+  for(var mi=0;mi<10;mi++){
+    html+='<option value="'+mi+'"'+(mi===idx?' selected':'')+'>'+MUSCLE_LABEL[mi]+'</option>';
   }
   html+='</select>';
   html+='<span style="color:#c8f135;font-size:9px;pointer-events:none;opacity:.7">&#9662;</span>';
@@ -701,10 +713,12 @@ function checkPRs(workoutType,curDk,curSets,plan,store){
     if(k===curDk)return false;
     if(!/^\d{4}-\d{2}-\d{2}_d\d$/.test(k))return false;
     if(!hasLoggedSets(store[k]))return false;
-    var kDow=parseInt(k.slice(-1));
+    var kDow=parseInt(k.slice(-1)),datepart=k.slice(0,10);
     if(kDow>=5)return false;
-    var kType=(typeof store[k].workoutType==="number")?store[k].workoutType:kDow;
-    return kType===workoutType&&k.slice(0,10)>=PPL_START_DATE;
+    if(workoutType>=5 && datepart<PPL_START_DATE)return false;
+    if(workoutType<5 && datepart>=PPL_START_DATE)return false;
+    var kType=(typeof store[k].workoutType==="number")?store[k].workoutType:(datepart>=PPL_START_DATE?kDow+5:kDow);
+    return kType===workoutType;
   });
   plan.forEach(function(name,ei){
     var bestReps=0,bestKg=0;
