@@ -325,6 +325,7 @@ body{display:flex;flex-direction:column;max-width:430px;margin:0 auto}
 var DAYS_S=["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
 var DAYS_F=["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
 var MUSCLE_LABEL=["PUSH A","PULL A","LEGS","PUSH B","PULL B","-","-"];
+var LEGACY_MUSCLE_LABEL=["CHEST","SHOULDERS","BACK","LEGS","ARMS","-","-"];
 var DAY_CLR=["#ff375f","#ff9f0a","#30d158","#0a84ff","#bf5af2","#64d2ff","#5e5ce6"];
 var WEEKEND=[5,6];
 var ACT_TYPES=[
@@ -347,13 +348,13 @@ var MUSCLE_SVG={
 var DAY_ICO=["chest","shoulders","back","legs","arms","cycling","walking"];
 var PPL_START_DATE="2026-11-18";
 var PPL_EXERCISES=[
- ["Împins înclinat cu gantere","Împins la aparat pentru piept","Fluturări la pec deck","Împins deasupra capului cu gantere","Ridicări laterale","Extensii triceps la scripete cu frânghie","Extensii triceps deasupra capului cu frânghie"],
+ ["Împins înclinat cu gantere","Fluturări la pec deck","Împins deasupra capului cu gantere","Ridicări laterale","Extensii triceps la scripete cu frânghie","Extensii triceps deasupra capului cu frânghie"],
  ["Tracțiuni asistate la aparat","Ramat cu priză largă cu bara","Ramat cu priză îngustă","Flexii biceps la bancă Scott","Flexii ciocan"],
- ["Extensii pentru cvadricepși","Presa pentru picioare","Flexii femurali culcat"],
- ["Împins înclinat cu gantere","Împins la aparat pentru piept","Fluturări la pec deck","Împins deasupra capului cu gantere","Ridicări laterale","Extensii triceps la scripete cu frânghie","Extensii triceps deasupra capului cu frânghie"],
+ ["Extensii pentru cvadricepși","Presă pentru picioare","Flexii biceps femural culcat"],
+ ["Împins înclinat cu gantere","Fluturări la pec deck","Împins deasupra capului cu gantere","Ridicări laterale","Extensii triceps la scripete cu frânghie","Extensii triceps deasupra capului cu frânghie"],
  ["Tracțiuni asistate la aparat","Ramat cu priză largă cu bara","Ramat cu priză îngustă","Flexii biceps la bancă Scott","Flexii ciocan"]
 ];
-var PPL_SET_COUNTS=[[4,4,3,4,3,3,3],[3,3,3,3,3],[4,4,4],[4,4,3,4,3,3,3],[3,3,3,3,3]];
+var PPL_SET_COUNTS=[[4,4,3,4,3,3],[3,3,3,3,3],[4,4,4],[4,4,3,4,3,3],[3,3,3,3,3]];
 function getExerciseSetCount(workoutType,exerciseIndex){return (PPL_SET_COUNTS[workoutType]||[])[exerciseIndex]||4;}
 function setupPPLPlan(){
  var store=gs();
@@ -399,7 +400,7 @@ function getLastWeekData(store,workoutType,currentDateStr){
 // Returns sets keyed by exercise NAME instead of index
 // currentPlan: array of exercise names for today
 // lastData: {sets, plan, date} from getLastWeekData
-function getLastSetsByName(currentPlan,lastData){
+function getLastSetsByName(currentPlan,lastData,workoutType){
   var result={};
   var lastSets=lastData.sets||{};
   var lastPlan=lastData.plan||[];
@@ -414,7 +415,7 @@ function getLastSetsByName(currentPlan,lastData){
     if(lastEi<0)return; // exercise not found in last week
     // Copy sets from lastEi → curEi slot
     result[curEi]={};
-    for(var s=0;s<4;s++){
+    for(var s=0;s<getExerciseSetCount(workoutType,lastEi);s++){
       var lk=lastEi+"_"+s;
       if(lastSets[lk])result[curEi][s]=lastSets[lk];
     }
@@ -580,7 +581,7 @@ function renderWeekday(container,dayData,idx,store,dk,actualDow){
   html+='<div style="display:flex;align-items:center;gap:4px;margin-top:2px">';
   html+='<select class="day-type-select" style="color:#c8f135" onchange="changeWorkoutType(this)">';
   for(var mi=0;mi<5;mi++){
-    html+='<option value="'+mi+'"'+(mi===idx?' selected':'')+'>'+MUSCLE_LABEL[mi]+'</option>';
+    html+='<option value="'+mi+'"'+(mi===idx?' selected':'')+'>'+((iso(curDate)<PPL_START_DATE)?LEGACY_MUSCLE_LABEL[mi]:MUSCLE_LABEL[mi])+'</option>';
   }
   html+='</select>';
   html+='<span style="color:#c8f135;font-size:9px;pointer-events:none;opacity:.7">&#9662;</span>';
@@ -588,7 +589,7 @@ function renderWeekday(container,dayData,idx,store,dk,actualDow){
   if(prs.length)html+='<div class="pr-banner"><div style="font-size:20px;flex-shrink:0">&#127942;</div><div class="pr-text">'+prs.join("<br>")+'</div></div>';
   if(total)html+='<div class="prog-wrap"><div class="prog-bar" style="width:'+pct+'%"></div></div>';
   var lastData=getLastWeekData(store,idx,iso(curDate));
-  var lastByName=getLastSetsByName(plan,lastData);
+  var lastByName=getLastSetsByName(plan,lastData,idx);
   if(!plan.length){
     html+='<div class="empty-state"><div style="margin-bottom:10px">'+MUSCLE_SVG[DAY_ICO[idx]]+'</div>No exercises planned.<br>Tap the edit button below.</div>';
   } else {
