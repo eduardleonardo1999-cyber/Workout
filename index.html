@@ -324,7 +324,7 @@ body{display:flex;flex-direction:column;max-width:430px;margin:0 auto}
 <script>
 var DAYS_S=["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
 var DAYS_F=["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
-var MUSCLE_LABEL=["CHEST","SHOULDERS","BACK","LEGS","ARMS","-","-"];
+var MUSCLE_LABEL=["PUSH A","PULL A","LEGS","PUSH B","PULL B","-","-"];
 var DAY_CLR=["#ff375f","#ff9f0a","#30d158","#0a84ff","#bf5af2","#64d2ff","#5e5ce6"];
 var WEEKEND=[5,6];
 var ACT_TYPES=[
@@ -345,6 +345,23 @@ var MUSCLE_SVG={
   walking:'<svg width="54" height="54" viewBox="0 0 54 54" fill="none"><text x="27" y="32" font-size="15" font-weight="700" fill="#c8f135" text-anchor="middle" font-family="-apple-system,sans-serif" letter-spacing="1">REST</text><text x="27" y="44" font-size="8" font-weight="500" fill="#c8f135" text-anchor="middle" font-family="-apple-system,sans-serif" letter-spacing="3" opacity=".3">DAY</text></svg>'
 };
 var DAY_ICO=["chest","shoulders","back","legs","arms","cycling","walking"];
+var PPL_START_DATE="2026-11-18";
+var PPL_EXERCISES=[
+ ["Împins înclinat cu gantere","Împins la aparat pentru piept","Fluturări la pec deck","Împins deasupra capului cu gantere","Ridicări laterale","Extensii triceps la scripete cu frânghie","Extensii triceps deasupra capului cu frânghie"],
+ ["Tracțiuni asistate la aparat","Ramat cu priză largă cu bara","Ramat cu priză îngustă","Flexii biceps la bancă Scott","Flexii ciocan"],
+ ["Extensii pentru cvadricepși","Presa pentru picioare","Flexii femurali culcat"],
+ ["Împins înclinat cu gantere","Împins la aparat pentru piept","Fluturări la pec deck","Împins deasupra capului cu gantere","Ridicări laterale","Extensii triceps la scripete cu frânghie","Extensii triceps deasupra capului cu frânghie"],
+ ["Tracțiuni asistate la aparat","Ramat cu priză largă cu bara","Ramat cu priză îngustă","Flexii biceps la bancă Scott","Flexii ciocan"]
+];
+var PPL_SET_COUNTS=[[4,4,3,4,3,3,3],[3,3,3,3,3],[4,4,4],[4,4,3,4,3,3,3],[3,3,3,3,3]];
+function getExerciseSetCount(workoutType,exerciseIndex){return (PPL_SET_COUNTS[workoutType]||[])[exerciseIndex]||4;}
+function setupPPLPlan(){
+ var store=gs();
+ if(store.pplSetupVersion==="pplpp-2026-11-18")return;
+ for(var i=0;i<5;i++)savePlanVersion(store,i,PPL_EXERCISES[i],PPL_START_DATE);
+ store.pplSetupVersion="pplpp-2026-11-18";
+ ss(store);
+}
 
 function gs(){try{return JSON.parse(localStorage.getItem("wt4")||"{}")}catch(e){return{}}}
 function ss(d){localStorage.setItem("wt4",JSON.stringify(d))}
@@ -366,7 +383,7 @@ function getLastWeekData(store,workoutType,currentDateStr){
   Object.keys(store).forEach(function(k){
     if(!/^\d{4}-\d{2}-\d{2}_d\d$/.test(k))return;
     var datepart=k.slice(0,10);
-    if(datepart>=currentDateStr)return;
+    if(datepart>=currentDateStr||datepart<PPL_START_DATE)return;
     if(!hasLoggedSets(store[k]))return;
     var kDow=parseInt(k.slice(-1));
     if(kDow>=5)return;
@@ -419,10 +436,10 @@ function getPlan(store,dayIdx,dateStr){
 }
 
 // savePlanVersion: saves a new version of the plan starting from today
-function savePlanVersion(store,dayIdx,names){
+function savePlanVersion(store,dayIdx,names,fromDate){
   if(!store.plans)store.plans={};
   var raw=store.plans[dayIdx];
-  var today=iso(new Date());
+  var today=fromDate||iso(new Date());
   // convert old format
   if(!raw){raw=[];}
   if(raw.length>0&&typeof raw[0]==="string"){
@@ -554,8 +571,8 @@ function renderWeekday(container,dayData,idx,store,dk,actualDow){
   var plan=getPlan(store,idx,iso(curDate));
   var sets=dayData.sets||{};
   var prs=checkPRs(idx,dk,sets,plan,store);
-  var done=0,total=plan.length*4;
-  plan.forEach(function(_,ei){for(var s=0;s<4;s++){if(sets[ei+"_"+s]&&sets[ei+"_"+s].reps>0)done++}});
+  var done=0,total=plan.reduce(function(sum,_,ei){return sum+getExerciseSetCount(idx,ei)},0);
+  plan.forEach(function(_,ei){for(var s=0;s<getExerciseSetCount(idx,ei);s++){if(sets[ei+"_"+s]&&sets[ei+"_"+s].reps>0)done++}});
   var pct=total?Math.round(done/total*100):0;
   var clr=DAY_CLR[idx];
   var html='<div class="day-hero"><div class="day-icon-wrap" style="background:rgba(200,241,53,.08);border:.5px solid rgba(200,241,53,.2)">'+MUSCLE_SVG[DAY_ICO[idx]]+'</div>';
@@ -563,7 +580,7 @@ function renderWeekday(container,dayData,idx,store,dk,actualDow){
   html+='<div style="display:flex;align-items:center;gap:4px;margin-top:2px">';
   html+='<select class="day-type-select" style="color:#c8f135" onchange="changeWorkoutType(this)">';
   for(var mi=0;mi<5;mi++){
-    html+='<option value="'+mi+'"'+(mi===idx?' selected':'')+'>'+MUSCLE_LABEL[mi]+' WORKOUT</option>';
+    html+='<option value="'+mi+'"'+(mi===idx?' selected':'')+'>'+MUSCLE_LABEL[mi]+'</option>';
   }
   html+='</select>';
   html+='<span style="color:#c8f135;font-size:9px;pointer-events:none;opacity:.7">&#9662;</span>';
@@ -574,31 +591,29 @@ function renderWeekday(container,dayData,idx,store,dk,actualDow){
   var lastByName=getLastSetsByName(plan,lastData);
   if(!plan.length){
     html+='<div class="empty-state"><div style="margin-bottom:10px">'+MUSCLE_SVG[DAY_ICO[idx]]+'</div>No exercises planned.<br>Tap the edit button below.</div>';
-  } else if(idx===4){
-    html+=renderFriday(plan,sets,idx,lastByName);
   } else {
-    plan.forEach(function(name,ei){html+=renderExCard(name,ei,sets,idx,false,lastByName)});
+    plan.forEach(function(name,ei){html+=renderExCard(name,ei,sets,idx,false,lastByName,getExerciseSetCount(idx,ei))});
   }
   container.innerHTML=html;
   document.getElementById("btnPlan").style.display="flex";
   document.getElementById("btnSave").textContent="Save day";
 }
 
-function renderExCard(name,ei,sets,idx,compact,lastSets){
+function renderExCard(name,ei,sets,idx,compact,lastSets,setCount){
   var rowCls=compact?"ss-set-row":"set-row";
   var numCls=compact?"ss-set-num":"set-num";
   var headCls=compact?"ss-sets-head":"sets-head";
   var inpCls=compact?"ss-inp":"set-inp";
   var ls=lastSets||{};
   var rows="";
-  for(var s=0;s<4;s++){
+  for(var s=0;s<(setCount||4);s++){
     var k=ei+"_"+s,sv=sets[k]||{};
     var lsv=(ls[ei]&&ls[ei][s])||{};
     var hasLast=lsv.reps>0||lsv.kg>0;
     var isDone=sv.reps>0&&sv.kg>0;
     var rC=isDone?"done":(sv.reps>0?"filled":"");
     var kC=isDone?"done":(sv.kg>0?"filled":"");
-    var aC=sv.asst>0?"filled":"";
+    var aC=(typeof sv.rir==="number")?"filled":"";
     // last week reps for the num cell
     var lastRepsTxt=hasLast&&lsv.reps>0?lsv.reps:"–";
     var lastNumStyle=hasLast?"color:rgba(200,241,53,.55);font-size:"+(compact?"10":"12")+"px;font-weight:700;line-height:1":"color:rgba(235,235,245,.2);font-size:"+(compact?"10":"12")+"px";
@@ -607,14 +622,14 @@ function renderExCard(name,ei,sets,idx,compact,lastSets){
     rows+='<div class="'+numCls+'" style="flex-direction:column;gap:0;display:flex;align-items:center;justify-content:center">'+numContent+'</div>';
     rows+='<input class="'+inpCls+' '+rC+'" type="number" inputmode="decimal" placeholder="-" value="'+( sv.reps>0?sv.reps:"")+'" data-ei="'+ei+'" data-s="'+s+'" data-t="r" data-day="'+idx+'" onchange="saveInp(this)" onfocus="this.select()">';
     rows+='<input class="'+inpCls+' '+kC+'" type="number" inputmode="decimal" placeholder="-" value="'+( sv.kg>0?sv.kg:"")+'" data-ei="'+ei+'" data-s="'+s+'" data-t="k" data-day="'+idx+'" onchange="saveInp(this)" onfocus="this.select()">';
-    rows+='<input class="'+inpCls+' '+aC+'" type="number" inputmode="decimal" placeholder="-" value="'+( sv.asst>0?sv.asst:"")+'" data-ei="'+ei+'" data-s="'+s+'" data-t="a" data-day="'+idx+'" onchange="saveInp(this)" onfocus="this.select()">';
+    rows+='<input class="'+inpCls+' '+aC+'" type="number" inputmode="numeric" min="0" max="5" step="1" placeholder="-" value="'+(typeof sv.rir==="number"?sv.rir:"")+'" data-ei="'+ei+'" data-s="'+s+'" data-t="i" data-day="'+idx+'" onchange="saveInp(this)" onfocus="this.select()">';
     rows+='</div>';
     // hint row under each set
     if(hasLast){
       var hintParts=[];
       if(lsv.reps>0)hintParts.push(lsv.reps+"r");
       if(lsv.kg>0)hintParts.push(lsv.kg+"kg");
-      if(lsv.asst>0)hintParts.push("+"+lsv.asst+"h");
+      if(typeof lsv.rir==="number")hintParts.push("RIR "+lsv.rir);
       var hintFontSize=compact?"9":"10";
       var numW=compact?"22px":"26px";
       rows+='<div style="padding-left:calc('+numW+' + 4px);font-size:'+hintFontSize+'px;color:rgba(200,241,53,.3);padding-bottom:4px;margin-top:-2px;font-weight:500">last: '+hintParts.join(" · ")+'</div>';
@@ -625,7 +640,7 @@ function renderExCard(name,ei,sets,idx,compact,lastSets){
   html+='<span class="ex-name-disp" id="exd_'+idx+'_'+ei+'">'+nd+'</span>';
   html+='<input class="ex-name-inp" id="exe_'+idx+'_'+ei+'" value="'+nd+'" placeholder="Exercise name" onblur="saveExName('+idx+','+ei+')" onkeydown="nameKey(event,'+idx+','+ei+')">';
   html+='</div><button class="btn-edit" onclick="toggleName('+idx+','+ei+')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M11 4H6a2 2 0 00-2 2v12a2 2 0 002 2h12a2 2 0 002-2v-5" stroke="rgba(235,235,245,.5)" stroke-width="1.8" stroke-linecap="round"/><path d="M17 3l4 4-8 8H9v-4l8-8z" stroke="rgba(235,235,245,.5)" stroke-width="1.8" stroke-linejoin="round"/></svg></button></div>';
-  html+='<div class="card-body"><div class="'+headCls+'"><span style="font-size:9px;color:rgba(200,241,53,.4)">prev</span><span>Reps</span><span>Kg</span><span>+Help</span></div>'+rows+'</div></div>';
+  html+='<div class="card-body"><div class="'+headCls+'"><span style="font-size:9px;color:rgba(200,241,53,.4)">prev</span><span>Repetări</span><span>Kg</span><span>RIR</span></div>'+rows+'</div></div>';
   return html;
 }
 
@@ -646,21 +661,21 @@ function nameKey(event,di,ei){
 
 function saveInp(input){
   var ei=input.dataset.ei,s=input.dataset.s,t=input.dataset.t,dayI=parseInt(input.dataset.day);
-  var val=parseFloat(input.value)||0;
+  var val=input.value.trim()===""?null:parseFloat(input.value); if(val!==null&&!isFinite(val))val=null;
   var store=gs(),dk=dayKey(curDate);
   if(!store[dk])store[dk]={};
   if(!store[dk].sets)store[dk].sets={};
   var k=ei+"_"+s;
   if(!store[dk].sets[k])store[dk].sets[k]={};
-  if(t==="r")store[dk].sets[k].reps=val;
-  else if(t==="k")store[dk].sets[k].kg=val;
-  else store[dk].sets[k].asst=val;
+  if(t==="r"){if(val===null)delete store[dk].sets[k].reps;else store[dk].sets[k].reps=val;}
+  else if(t==="k"){if(val===null)delete store[dk].sets[k].kg;else store[dk].sets[k].kg=val;}
+  else {if(val===null)delete store[dk].sets[k].rir;else store[dk].sets[k].rir=Math.max(0,Math.min(5,Math.round(val)));}
   ss(store);
   var sv=store[dk].sets[k];
   var isDone=sv.reps>0&&sv.kg>0;
-  input.classList.toggle("filled",val>0&&!isDone);
+  input.classList.toggle("filled",val!==null&&val!==0&&!isDone);
   input.classList.toggle("done",isDone&&(t==="r"||t==="k"));
-  ["r","k","a"].forEach(function(type){
+  ["r","k","i"].forEach(function(type){
     var sib=document.querySelector('input[data-ei="'+ei+'"][data-s="'+s+'"][data-t="'+type+'"][data-day="'+dayI+'"]');
     if(!sib)return;
     var sv2=parseFloat(sib.value)||0;
@@ -673,8 +688,8 @@ function updateProg(){
   var store=gs(),dk=dayKey(curDate);
   var workoutType=getWorkoutType(store,curDate);
   var plan=getPlan(store,workoutType,iso(curDate)),sets=(store[dk]||{}).sets||{};
-  var done=0,total=plan.length*4;
-  plan.forEach(function(_,ei){for(var s=0;s<4;s++){if(sets[ei+"_"+s]&&sets[ei+"_"+s].reps>0)done++}});
+  var done=0,total=plan.reduce(function(sum,_,ei){return sum+getExerciseSetCount(workoutType,ei)},0);
+  plan.forEach(function(_,ei){for(var s=0;s<getExerciseSetCount(workoutType,ei);s++){if(sets[ei+"_"+s]&&sets[ei+"_"+s].reps>0)done++}});
   var bar=document.querySelector(".prog-bar");
   if(bar)bar.style.width=(total?Math.round(done/total*100):0)+"%";
 }
@@ -688,15 +703,15 @@ function checkPRs(workoutType,curDk,curSets,plan,store){
     var kDow=parseInt(k.slice(-1));
     if(kDow>=5)return false;
     var kType=(typeof store[k].workoutType==="number")?store[k].workoutType:kDow;
-    return kType===workoutType;
+    return kType===workoutType&&k.slice(0,10)>=PPL_START_DATE;
   });
   plan.forEach(function(name,ei){
     var bestReps=0,bestKg=0;
     pastKeys.forEach(function(pk){
-      for(var s=0;s<4;s++){var ps=(store[pk].sets||{})[ei+"_"+s]||{};if((ps.reps||0)>bestReps)bestReps=ps.reps||0;if((ps.kg||0)>bestKg)bestKg=ps.kg||0}
+      for(var s=0;s<getExerciseSetCount(workoutType,ei);s++){var ps=(store[pk].sets||{})[ei+"_"+s]||{};if((ps.reps||0)>bestReps)bestReps=ps.reps||0;if((ps.kg||0)>bestKg)bestKg=ps.kg||0}
     });
     var repsT=0,kgT=0;
-    for(var s=0;s<4;s++){var cs=curSets[ei+"_"+s]||{};if((cs.reps||0)>repsT)repsT=cs.reps||0;if((cs.kg||0)>kgT)kgT=cs.kg||0}
+    for(var s=0;s<getExerciseSetCount(workoutType,ei);s++){var cs=curSets[ei+"_"+s]||{};if((cs.reps||0)>repsT)repsT=cs.reps||0;if((cs.kg||0)>kgT)kgT=cs.kg||0}
     if(bestReps>0&&repsT>bestReps)msgs.push("New rep PR - "+(name||"Ex "+(ei+1))+": "+repsT+" reps!");
     if(bestKg>0&&kgT>bestKg)msgs.push("New weight PR - "+(name||"Ex "+(ei+1))+": "+kgT+"kg!");
   });
@@ -1314,6 +1329,7 @@ function showToast(msg){
       4:[{from:"2000-01-01",names:["Barbell Curl","Hammer Curl","Skull Crushers","Tricep Pushdown","Cable Curl","Close-Grip Bench"]}]
     };ss(store);
   }
+  setupPPLPlan();
   buildStrip();renderDay();
 })();
 </script>
